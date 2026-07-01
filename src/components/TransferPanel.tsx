@@ -408,6 +408,12 @@ export const TransferPanel: React.FC<TransferPanelProps> = ({
               placeholder="เลขที่ลาเบลรับเข้า (จะดึงข้อมูลพาร์ท/จำนวน/ที่เก็บโดยอัตโนมัติ)"
               value={scanLabelInput}
               onChange={(e) => setScanLabelInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  simulateScan();
+                }
+              }}
               className="border p-1.5 text-xs rounded flex-1 bg-white font-mono"
             />
             <input
@@ -415,6 +421,12 @@ export const TransferPanel: React.FC<TransferPanelProps> = ({
               placeholder="รหัส Part No (หากไม่มีลาเบล)"
               value={scanPartInput}
               onChange={(e) => setScanPartInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  simulateScan();
+                }
+              }}
               className="border p-1.5 text-xs rounded flex-1 bg-white"
             />
             <button

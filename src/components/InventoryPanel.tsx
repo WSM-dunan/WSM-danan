@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Product, Transaction, AdjustRequest, Employee } from '../data';
-import { parseImportData } from '../utils';
+import { parseImportData, fuzzySearchProducts } from '../utils';
 import { 
   Edit, 
   Trash2, 
@@ -79,6 +79,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [adjLocation, setAdjLocation] = useState(locations[0] || 'DIT-01');
   const [adjPhysicalCount, setAdjPhysicalCount] = useState<number | ''>('');
   const [adjSearch, setAdjSearch] = useState('');
+  const [showLocDropdown, setShowLocDropdown] = useState(false);
 
   // 2. Monthly Stock Count sub-tab states
   const [countQuantities, setCountQuantities] = useState<{ [id: string]: number }>({});
@@ -93,6 +94,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   // Filter products for dropdown searches
   const uniqueCustomers = Array.from(new Set(products.map((p) => p.customer)));
+
+  const adjFuzzyMatches = adjSearch ? fuzzySearchProducts(adjSearch, products) : [];
 
   const filteredProducts = products.filter((p) => {
     const matchesCust = selectedCustomerFilter === 'ALL' || p.customer === selectedCustomerFilter;
@@ -528,23 +531,41 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               คำขอปรับปรุงยอดสต๊อกหน้างาน
             </h3>
             <form onSubmit={handleSingleAdjustSubmit} className="space-y-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 block mb-1">ค้นหา/พิมพ์พาร์ทสินค้า</label>
+               <div>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1">ค้นหา/พิมพ์พาร์ทสินค้า (Fuzzy Search & Scan)</label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="ป้อนรหัสสินค้าเพื่อสแกน/ค้นหา..."
+                    placeholder="รหัส Part No / ชื่อสินค้า เพื่อค้นหา..."
                     value={adjSearch}
                     onChange={(e) => {
                       setAdjSearch(e.target.value);
-                      const match = products.find((p) => p.partNo.toUpperCase() === e.target.value.toUpperCase());
-                      if (match) {
-                        setAdjPartNo(match.partNo);
-                      }
                     }}
-                    className="w-full border p-2 text-xs rounded font-mono outline-none focus:ring-1 focus:ring-amber-500 bg-slate-50"
+                    className="w-full border p-2 text-xs rounded outline-none focus:ring-1 focus:ring-amber-500 font-medium"
                   />
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
+
+                  {/* Fuzzy matches dropdown suggestion box */}
+                  {adjSearch && adjFuzzyMatches.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full bg-white border border-slate-200 rounded mt-1 max-h-48 overflow-y-auto z-50 shadow-lg divide-y">
+                      {adjFuzzyMatches.map((p, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setAdjPartNo(p.partNo);
+                            setAdjSearch(p.partNo);
+                          }}
+                          className="w-full text-left p-2 hover:bg-slate-50 text-[11px] block transition-colors"
+                        >
+                          <span className="font-bold text-slate-800">{p.partNo}</span>
+                          <span className="text-slate-400 mx-1">|</span>
+                          <span className="text-slate-500">{p.customer}</span>
+                          <span className="block text-[9px] text-slate-400">{p.partName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -570,19 +591,47 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 </select>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 block mb-1">ระบุ Location ที่ทำการตรวจนับ</label>
-                <select
+               <div className="relative">
+                <label className="text-[10px] font-bold text-slate-400 block mb-1">ระบุ Location ที่ทำการตรวจนับ (พิมพ์ค้นหาได้)</label>
+                <input
+                  type="text"
+                  placeholder="พิมพ์ค้นหาหรือป้อนที่ตั้ง... เช่น DIT-01"
                   value={adjLocation}
-                  onChange={(e) => setAdjLocation(e.target.value)}
-                  className="w-full border p-2 text-xs rounded outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold"
-                >
-                  {locations.map((loc) => (
-                    <option key={loc} value={loc}>
-                      📍 {loc}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(e) => {
+                    setAdjLocation(e.target.value);
+                    setShowLocDropdown(true);
+                  }}
+                  onFocus={() => setShowLocDropdown(true)}
+                  onBlur={() => {
+                    // Delay so item click registers before dropdown closes
+                    setTimeout(() => setShowLocDropdown(false), 200);
+                  }}
+                  className="w-full border p-2 text-xs rounded outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold bg-white"
+                />
+                {showLocDropdown && (
+                  <div className="absolute left-0 right-0 top-full bg-white border border-slate-200 rounded mt-1 max-h-40 overflow-y-auto z-50 shadow-lg divide-y divide-slate-100">
+                    {locations
+                      .filter((loc) => loc.toLowerCase().includes(adjLocation.toLowerCase()))
+                      .map((loc) => (
+                        <button
+                          key={loc}
+                          type="button"
+                          onMouseDown={() => {
+                            setAdjLocation(loc);
+                            setShowLocDropdown(false);
+                          }}
+                          className="w-full text-left p-2 hover:bg-slate-100 text-xs font-mono font-bold block transition-colors"
+                        >
+                          📍 {loc}
+                        </button>
+                      ))}
+                    {locations.filter((loc) => loc.toLowerCase().includes(adjLocation.toLowerCase())).length === 0 && (
+                      <div className="p-2 text-xs text-slate-400 text-center italic bg-slate-50">
+                        ไม่พบข้อมูลพิกัดในระบบ (สามารถป้อนพิกัดกำหนดเองได้)
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {adjPartNo && (

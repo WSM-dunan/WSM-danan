@@ -377,6 +377,12 @@ export const ReceivingPanel: React.FC<ReceivingPanelProps> = ({
               placeholder="เลขที่ลาเบล (ปล่อยว่างหากต้องการสแกนอัตโนมัติ)"
               value={scanLabelInput}
               onChange={(e) => setScanLabelInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  simulateScan();
+                }
+              }}
               className="border p-1.5 text-xs rounded flex-1 bg-white"
             />
             <input
@@ -384,6 +390,12 @@ export const ReceivingPanel: React.FC<ReceivingPanelProps> = ({
               placeholder="รหัส Part No (สแกนคิวอาร์)"
               value={scanPartInput}
               onChange={(e) => setScanPartInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  simulateScan();
+                }
+              }}
               className="border p-1.5 text-xs rounded flex-1 bg-white font-mono"
             />
             <button

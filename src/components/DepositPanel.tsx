@@ -192,6 +192,12 @@ export const DepositPanel: React.FC<DepositPanelProps> = ({
               placeholder="ยิงบาร์โค้ด QR..."
               value={scanPartInput}
               onChange={(e) => setScanPartInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  simulateScan();
+                }
+              }}
               className="border p-1 text-xs rounded flex-1 bg-white font-mono"
             />
             <button

@@ -20,6 +20,8 @@ import { InventoryPanel } from './components/InventoryPanel';
 import { AttendancePanel } from './components/AttendancePanel';
 import { EmployeesPanel } from './components/EmployeesPanel';
 import { ReportsPanel } from './components/ReportsPanel';
+import { NotificationsPanel } from './components/NotificationsPanel';
+import { GoogleSheetsPanel } from './components/GoogleSheetsPanel';
 
 import {
   Layers,
@@ -40,6 +42,8 @@ import {
   Database,
   Plus,
   Lock,
+  Bell,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function App() {
@@ -373,11 +377,27 @@ export default function App() {
       );
     } else {
       setAttendanceLogs(
-        attendanceLogs.map((log) => (log.id === reqId ? { ...log, status: 'PRESENT' } : log))
+        attendanceLogs.map((log) => {
+          if (log.id === reqId) {
+            const isLeave = log.status === 'PENDING_LEAVE';
+            return {
+              ...log,
+              status: isLeave 
+                ? 'LEAVE_REJECTED' 
+                : log.status === 'FORGOT_REQUEST_IN' 
+                ? 'FORGOT_REJECTED_IN' 
+                : 'FORGOT_REJECTED_OUT',
+            };
+          }
+          return log;
+        })
       );
     }
     alert('ปฏิเสธคำขอการดำเนินการเรียบร้อยแล้ว!');
   };
+
+  const pendingRequestsCount = adjustRequests.filter((r) => r.status === 'PENDING').length +
+    attendanceLogs.filter((l) => l.status === 'FORGOT_REQUEST_IN' || l.status === 'FORGOT_REQUEST_OUT' || l.status === 'PENDING_LEAVE').length;
 
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 text-slate-800 font-sans">
@@ -447,6 +467,23 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab('notifications')}
+              className={`px-4 py-2.5 text-xs font-bold flex items-center justify-between gap-3 transition-all ${
+                activeTab === 'notifications' ? 'bg-slate-900 text-white border-l-4 border-rose-500' : 'hover:bg-slate-700/50 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Bell className="w-4 h-4 text-rose-500 shrink-0" />
+                <span className="hidden sm:inline">การแจ้งเตือนและคำขอ</span>
+              </div>
+              {pendingRequestsCount > 0 && (
+                <span className="bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-pulse shrink-0">
+                  {pendingRequestsCount}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setActiveTab('receiving')}
               className={`px-4 py-2.5 text-xs font-bold flex items-center gap-3 transition-all ${
                 activeTab === 'receiving' ? 'bg-slate-900 text-white border-l-4 border-emerald-500' : 'hover:bg-slate-700/50 hover:text-slate-200'
@@ -491,6 +528,16 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab('sheets')}
+              className={`px-4 py-2.5 text-xs font-bold flex items-center gap-3 transition-all ${
+                activeTab === 'sheets' ? 'bg-slate-900 text-white border-l-4 border-emerald-500' : 'hover:bg-slate-700/50 hover:text-slate-200'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="hidden sm:inline">ซิงก์ Google Sheets</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('attendance')}
               className={`px-4 py-2.5 text-xs font-bold flex items-center gap-3 transition-all ${
                 activeTab === 'attendance' ? 'bg-slate-900 text-white border-l-4 border-purple-500' : 'hover:bg-slate-700/50 hover:text-slate-200'
@@ -526,76 +573,6 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-4 space-y-4">
           {loggedInUser ? (
             <>
-              {/* Approval queues for leadership/admin (Visible across all tabs if there are pending items) */}
-              {(loggedInUser.role === 'admin' || loggedInUser.role === 'leader') && (
-                <div className="space-y-2">
-                  {/* Adjustment approvals queue */}
-                  {adjustRequests.filter((r) => r.status === 'PENDING').map((req) => (
-                    <div key={req.id} className="bg-amber-50 border border-amber-200 p-3 rounded text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
-                      <div>
-                        <span className="font-bold text-amber-800 uppercase">[คำขอปรับสต๊อกสินค้าด่วน]</span> พาร์ท: <strong>{req.partNo}</strong> ({req.customer}) 
-                        • สต๊อกระบุ: {req.currentStock} Pcs • นับได้จริง: <strong className="text-amber-800">{req.countedQty} Pcs</strong> 
-                        • ผู้ยื่นคำขอ: {req.requester}
-                      </div>
-                      <div className="flex gap-1.5 shrink-0 self-end sm:self-auto">
-                        <button
-                          onClick={() => handleRejectRequest(req.id, 'adjust')}
-                          className="px-3 py-1 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 text-[10px]"
-                        >
-                          ปฏิเสธ
-                        </button>
-                        <button
-                          onClick={() => handleApproveAdjustment(req.id, req.partNo, req.customer, req.delta)}
-                          className="px-3.5 py-1 bg-amber-500 hover:bg-amber-600 rounded font-bold text-white text-[10px]"
-                        >
-                          อนุมัติปรับยอด
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Attendance forgot punch and leave approvals queue */}
-                  {attendanceLogs.filter((l) => l.status === 'FORGOT_REQUEST_IN' || l.status === 'FORGOT_REQUEST_OUT' || l.status === 'PENDING_LEAVE').map((req) => (
-                    <div key={req.id} className="bg-blue-50 border border-blue-200 p-3 rounded text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
-                      <div>
-                        {req.status === 'PENDING_LEAVE' ? (
-                          <span>
-                            <span className="font-bold text-blue-800">[ขอใบลาพักงาน]</span> <strong>{req.employeeName}</strong> 
-                            ขอลาประเภท: <strong className="text-blue-800">{req.leaveType}</strong> • รายละเอียด: {req.reason}
-                          </span>
-                        ) : (
-                          <span>
-                            <span className="font-bold text-blue-800">[ขอลืมตอกบัตรปรับเวลา]</span> <strong>{req.employeeName}</strong> 
-                            ขอแก้ไขปรับตอกฝั่ง: <strong>{req.status === 'FORGOT_REQUEST_IN' ? 'เข้างาน' : 'เลิกงาน'}</strong> 
-                            เวลาจริง: <strong className="text-blue-800">{req.requestedTime} น.</strong> ({req.date}) • เหตุผล: {req.reason}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-1.5 shrink-0 self-end sm:self-auto">
-                        <button
-                          onClick={() => handleRejectRequest(req.id, 'attendance')}
-                          className="px-3 py-1 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 text-[10px]"
-                        >
-                          ปฏิเสธ
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (req.status === 'PENDING_LEAVE') {
-                              handleApproveLeave(req.id);
-                            } else {
-                              handleApproveForgotPunch(req.id, req.employeeId, req.date, req.requestedTime || '08:30', req.status);
-                            }
-                          }}
-                          className="px-3.5 py-1 bg-blue-600 hover:bg-blue-500 rounded font-bold text-white text-[10px]"
-                        >
-                          อนุมัติ
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Active Tab Panel Selector */}
               {activeTab === 'dashboard' && (
                 <DashboardPanel
@@ -609,6 +586,18 @@ export default function App() {
                   onSync={handleSyncGoogleSheets}
                   isSyncing={isSyncing}
                   lastSynced={lastSynced}
+                />
+              )}
+
+              {activeTab === 'notifications' && (
+                <NotificationsPanel
+                  currentUser={loggedInUser}
+                  adjustRequests={adjustRequests}
+                  attendanceLogs={attendanceLogs}
+                  onApproveAdjustment={handleApproveAdjustment}
+                  onApproveForgotPunch={handleApproveForgotPunch}
+                  onApproveLeave={handleApproveLeave}
+                  onRejectRequest={handleRejectRequest}
                 />
               )}
 
@@ -667,6 +656,15 @@ export default function App() {
                     );
                   }}
                   onDeleteDeposit={(id) => setDeposits(deposits.filter((d) => d.id !== id))}
+                />
+              )}
+
+              {activeTab === 'sheets' && (
+                <GoogleSheetsPanel
+                  products={products}
+                  onImportProducts={setProducts}
+                  transactions={transactions}
+                  attendanceLogs={attendanceLogs}
                 />
               )}
 
@@ -758,9 +756,17 @@ export default function App() {
                   transactions={transactions}
                   products={products}
                   onDeleteTransaction={(labelId) => setTransactions(transactions.filter((t) => t.labelId !== labelId))}
-                  onUpdateTransactionPrinted={(labelIds) => {
+                  onUpdateTransactionPrinted={(labelIds, printedStatus) => {
                     setTransactions(
-                      transactions.map((t) => (labelIds.includes(t.labelId) ? { ...t, printed: true } : t))
+                      transactions.map((t) => {
+                        if (labelIds.includes(t.labelId)) {
+                          return {
+                            ...t,
+                            printed: printedStatus !== undefined ? printedStatus : !t.printed,
+                          };
+                        }
+                        return t;
+                      })
                     );
                   }}
                   selectedMonth={selectedMonth}

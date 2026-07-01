@@ -48,6 +48,19 @@ export const AttendancePanel: React.FC<AttendancePanelProps> = ({
   const todayStr = new Date().toISOString().split('T')[0];
   const todayRecord = attendanceLogs.find((l) => l.employeeId === currentUser.employeeId && l.date === todayStr);
 
+  const getTodayShift = () => {
+    if (!currentUser) return 'OFF';
+    if (currentUser.weeklyShifts && currentUser.weeklyShifts[todayStr]) {
+      return currentUser.weeklyShifts[todayStr];
+    }
+    const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()];
+    if (currentUser.weeklyShifts && currentUser.weeklyShifts[dayKey]) {
+      return currentUser.weeklyShifts[dayKey];
+    }
+    return currentUser.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY';
+  };
+  const todayShift = getTodayShift();
+
   const handleClockInAction = () => {
     const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
     onCheckIn(currentUser.employeeId, `${currentUser.name} ${currentUser.lastName}`, nowStr);
@@ -151,20 +164,20 @@ export const AttendancePanel: React.FC<AttendancePanelProps> = ({
             <div>
               <span className="font-bold">กะทำงานวันนี้ (จากตารางกะ):</span>{' '}
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                (currentUser.weeklyShifts?.[['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]] || (currentUser.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY')) === 'NIGHT'
+                todayShift === 'NIGHT'
                   ? 'bg-indigo-100 text-indigo-800'
-                  : (currentUser.weeklyShifts?.[['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]] || (currentUser.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY')) === 'DAY'
+                  : todayShift === 'DAY'
                   ? 'bg-amber-100 text-amber-800'
                   : 'bg-slate-100 text-slate-500'
               }`}>
-                {currentUser.weeklyShifts?.[['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]] === 'OFF'
+                {todayShift === 'OFF'
                   ? '😴 OFF (วันหยุด)'
-                  : currentUser.weeklyShifts?.[['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]] === 'NIGHT'
+                  : todayShift === 'NIGHT'
                   ? '🌙 NIGHT Shift'
-                  : currentUser.weeklyShifts?.[['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]] === 'DAY'
+                  : todayShift === 'DAY'
                   ? '🌞 DAY Shift'
                   : `ตามสัญญาหลัก: ${currentUser.shiftWork}`
-              }
+                }
               </span>
               <br />
               <span className="font-bold text-blue-600">สิทธิ์พนักงาน:</span> {currentUser.role}
@@ -247,12 +260,23 @@ export const AttendancePanel: React.FC<AttendancePanelProps> = ({
                   <td className="p-2 text-right">{log.workHours} ชม.</td>
                   <td className="p-2 text-right text-emerald-600 font-bold">+{log.otHours} ชม.</td>
                   <td className="p-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${log.status === 'PRESENT' ? 'bg-emerald-100 text-emerald-700' : log.status === 'LEAVE_APPROVED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      log.status === 'PRESENT'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : log.status === 'LEAVE_APPROVED'
+                        ? 'bg-purple-100 text-purple-700'
+                        : log.status.includes('REJECTED')
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
                       {log.status === 'PRESENT' && 'มาทำงานตามปกติ'}
                       {log.status === 'LEAVE_APPROVED' && 'ลางาน (อนุมัติ)'}
+                      {log.status === 'LEAVE_REJECTED' && 'ลางาน (ถูกปฏิเสธ)'}
                       {log.status === 'PENDING_LEAVE' && 'ลางาน (รออนุมัติ)'}
-                      {log.status === 'FORGOT_REQUEST_IN' && 'ขอกู้ตอกเข้างาน'}
-                      {log.status === 'FORGOT_REQUEST_OUT' && 'ขอกู้ตอกเลิกงาน'}
+                      {log.status === 'FORGOT_REQUEST_IN' && 'ขอกู้ตอกเข้างาน (รออนุมัติ)'}
+                      {log.status === 'FORGOT_REQUEST_OUT' && 'ขอกู้ตอกเลิกงาน (รออนุมัติ)'}
+                      {log.status === 'FORGOT_REJECTED_IN' && 'กู้ตอกเข้างาน (ถูกปฏิเสธ)'}
+                      {log.status === 'FORGOT_REJECTED_OUT' && 'กู้ตอกเลิกงาน (ถูกปฏิเสธ)'}
                     </span>
                   </td>
                 </tr>

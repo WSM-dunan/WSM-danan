@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Employee, DEFAULT_DEPARTMENTS, DEFAULT_ROLES } from '../data';
 import { Users, Trash2, Edit, Plus, Eye, EyeOff, Key, Search, Calendar } from 'lucide-react';
 
@@ -26,6 +26,12 @@ export const EmployeesPanel: React.FC<EmployeesPanelProps> = ({
   const [showPinId, setShowPinId] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'list' | 'scheduler'>('list');
   const [schedulerSearch, setSchedulerSearch] = useState('');
+
+  // Shift Scheduler States
+  const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedMonth, setSelectedMonth] = useState(7); // Default to Month 7 (July 2026) to match user example
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
+  const [weekendRestOption, setWeekendRestOption] = useState<'SUN' | 'SAT_SUN'>('SAT_SUN');
 
   // Form Fields
   const [employeeId, setEmployeeId] = useState('');
@@ -154,34 +160,116 @@ export const EmployeesPanel: React.FC<EmployeesPanelProps> = ({
     groupedEmployees[dept] = employees.filter((e) => e.department === dept);
   }
 
-  const daysOfWeek = [
-    { key: 'mon', label: 'จันทร์ (Mon)' },
-    { key: 'tue', label: 'อังคาร (Tue)' },
-    { key: 'wed', label: 'พุธ (Wed)' },
-    { key: 'thu', label: 'พฤหัส (Thu)' },
-    { key: 'fri', label: 'ศุกร์ (Fri)' },
-    { key: 'sat', label: 'เสาร์ (Sat)' },
-    { key: 'sun', label: 'อาทิตย์ (Sun)' },
-  ];
+  // Generate weeks of selected month in selectedYear
+  const weeks = useMemo(() => {
+    const month0Indexed = selectedMonth - 1;
+    const firstDay = new Date(selectedYear, month0Indexed, 1);
+    const lastDay = new Date(selectedYear, month0Indexed + 1, 0);
 
-  const getDayShift = (emp: Employee, dayKey: string) => {
+    // Find Monday of the week containing firstDay
+    const startOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+    const currentMonday = new Date(firstDay);
+    currentMonday.setDate(currentMonday.getDate() - startOffset);
+
+    const weeksList = [];
+    const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+    const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+    let iterations = 0;
+    while (currentMonday <= lastDay && iterations < 10) {
+      iterations++;
+      const startOfInterval = new Date(currentMonday);
+      const endOfInterval = new Date(currentMonday);
+      endOfInterval.setDate(endOfInterval.getDate() + 6);
+
+      const daysList = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(startOfInterval);
+        d.setDate(d.getDate() + i);
+        const dayOfWeekIndex = d.getDay();
+
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+
+        const key = dayKeys[dayOfWeekIndex];
+
+        daysList.push({
+          dateStr,
+          dayName: dayNames[dayOfWeekIndex],
+          label: `${dayNames[dayOfWeekIndex].substring(0, 3)} ${d.getDate()}/${d.getMonth() + 1}`,
+          key: key as 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun',
+        });
+      }
+
+      // Sort daysList to run Monday -> Sunday
+      daysList.sort((a, b) => {
+        const order = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 };
+        return (order[a.key as keyof typeof order] || 0) - (order[b.key as keyof typeof order] || 0);
+      });
+
+      const startLabel = `${startOfInterval.getDate()}/${startOfInterval.getMonth() + 1}`;
+      const endLabel = `${endOfInterval.getDate()}/${endOfInterval.getMonth() + 1}`;
+      const label = `${startLabel}-${endLabel}`;
+
+      weeksList.push({
+        start: startOfInterval,
+        end: endOfInterval,
+        label,
+        days: daysList,
+      });
+
+      // Advance to next Monday
+      currentMonday.setDate(currentMonday.getDate() + 7);
+    }
+
+    return weeksList;
+  }, [selectedYear, selectedMonth]);
+
+  const activeWeek = weeks[selectedWeekIndex] || weeks[0];
+
+  // Safeguard out of bounds index when month changes
+  useEffect(() => {
+    if (selectedWeekIndex >= weeks.length) {
+      setSelectedWeekIndex(0);
+    }
+  }, [selectedMonth, weeks.length, selectedWeekIndex]);
+
+  const getDayShiftByDate = (emp: Employee, dateStr: string, dayKey: string) => {
+    // 1. If specific date key exists, use it
+    if (emp.weeklyShifts && emp.weeklyShifts[dateStr]) {
+      return emp.weeklyShifts[dateStr];
+    }
+    // 2. Fallback to standard weekday key
     if (emp.weeklyShifts && emp.weeklyShifts[dayKey]) {
       return emp.weeklyShifts[dayKey];
+    }
+    // 3. Fallback to defaults based on chosen weekend rest days
+    if (dayKey === 'sun') {
+      return 'OFF';
+    }
+    if (dayKey === 'sat') {
+      return weekendRestOption === 'SAT_SUN' ? 'OFF' : (emp.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY');
     }
     if (emp.shiftWork.includes('NIGHT')) return 'NIGHT';
     return 'DAY';
   };
 
   const handleQuickSetShift = (emp: Employee, shiftType: string) => {
-    const updatedWeekly = {
-      mon: shiftType,
-      tue: shiftType,
-      wed: shiftType,
-      thu: shiftType,
-      fri: shiftType,
-      sat: 'OFF',
-      sun: 'OFF',
-    };
+    if (!activeWeek) return;
+    const updatedWeekly = { ...(emp.weeklyShifts || {}) };
+
+    activeWeek.days.forEach((day) => {
+      if (day.key === 'sun') {
+        updatedWeekly[day.dateStr] = 'OFF';
+      } else if (day.key === 'sat') {
+        updatedWeekly[day.dateStr] = weekendRestOption === 'SAT_SUN' ? 'OFF' : shiftType;
+      } else {
+        updatedWeekly[day.dateStr] = shiftType;
+      }
+    });
+
     onUpdateEmployee({
       ...emp,
       weeklyShifts: updatedWeekly,
@@ -316,17 +404,17 @@ export const EmployeesPanel: React.FC<EmployeesPanelProps> = ({
       ) : (
         /* Weekly Shift Scheduler view */
         <div className="bg-white rounded border border-slate-200 shadow-sm p-4 space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div className="space-y-0.5">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-indigo-600" />
-                ตารางจัดกะการทำงานพนักงานแบบรายวัน
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                <Calendar className="w-4 h-4 text-indigo-600 animate-bounce" />
+                ตารางจัดกะการทำงานพนักงานแบบรายสัปดาห์ (Weekly Shift Scheduler)
               </h3>
-              <p className="text-[11px] text-slate-400">กำหนดกะกลางวัน (DAY), กะกลางคืน (NIGHT), หรือหยุด (OFF) สำหรับวันในสัปดาห์</p>
+              <p className="text-[11px] text-slate-400">เลือก เดือน และเลือกปรับกะตาม สัปดาห์ พร้อมตัวเลือกกำหนดวันหยุดประจำสัปดาห์</p>
             </div>
 
             {/* Scheduler Search Bar */}
-            <div className="relative max-w-xs w-full self-start sm:self-auto">
+            <div className="relative max-w-xs w-full self-start md:self-auto">
               <input
                 type="text"
                 placeholder="ค้นหาชื่อหรือแผนกพนักงาน..."
@@ -338,16 +426,101 @@ export const EmployeesPanel: React.FC<EmployeesPanelProps> = ({
             </div>
           </div>
 
+          {/* Controls Panel */}
+          <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Year Select */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">ปี (Year)</span>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => {
+                    setSelectedYear(Number(e.target.value));
+                    setSelectedWeekIndex(0);
+                  }}
+                  className="w-full border border-slate-200 text-xs px-2 py-1.5 rounded bg-white font-bold outline-none focus:border-indigo-500"
+                >
+                  <option value={2026}>พ.ศ. 2569 (2026)</option>
+                  <option value={2027}>พ.ศ. 2570 (2027)</option>
+                  <option value={2025}>พ.ศ. 2568 (2025)</option>
+                </select>
+              </div>
+
+              {/* Month Select */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">เดือน (Month)</span>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => {
+                    setSelectedMonth(Number(e.target.value));
+                    setSelectedWeekIndex(0);
+                  }}
+                  className="w-full border border-slate-200 text-xs px-2 py-1.5 rounded bg-white font-bold text-indigo-700 outline-none focus:border-indigo-500"
+                >
+                  <option value={1}>1 (มกราคม)</option>
+                  <option value={2}>2 (กุมภาพันธ์)</option>
+                  <option value={3}>3 (มีนาคม)</option>
+                  <option value={4}>4 (เมษายน)</option>
+                  <option value={5}>5 (พฤษภาคม)</option>
+                  <option value={6}>6 (มิถุนายน)</option>
+                  <option value={7}>7 (กรกฎาคม)</option>
+                  <option value={8}>8 (สิงหาคม)</option>
+                  <option value={9}>9 (กันยายน)</option>
+                  <option value={10}>10 (ตุลาคม)</option>
+                  <option value={11}>11 (พฤศจิกายน)</option>
+                  <option value={12}>12 (ธันวาคม)</option>
+                </select>
+              </div>
+
+              {/* Weekend Rest Day Select */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black text-rose-600 uppercase tracking-wider">เลือกวันหยุดประจำสัปดาห์</span>
+                <select
+                  value={weekendRestOption}
+                  onChange={(e) => setWeekendRestOption(e.target.value as any)}
+                  className="w-full border border-rose-200 text-xs px-2 py-1.5 rounded bg-white font-bold text-rose-600 outline-none focus:border-rose-500"
+                >
+                  <option value="SUN">อาทิตย์อย่างเดียว (อา)</option>
+                  <option value="SAT_SUN">เสาร์, อาทิตย์ (ส,อา)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Week Selection */}
+            <div className="space-y-1">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">สัปดาห์ในรอบเดือน (Weekly Periods)</span>
+              <div className="flex flex-wrap gap-1.5">
+                {weeks.map((wk, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedWeekIndex(idx)}
+                    className={`px-3 py-1.5 rounded text-xs font-bold border transition-all ${
+                      selectedWeekIndex === idx
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-black'
+                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    สัปดาห์ที่ {idx + 1}: {wk.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-x-auto border border-slate-100 rounded">
             <table className="w-full text-left text-[11px] border-collapse min-w-[800px]">
               <thead>
                 <tr className="bg-slate-50 border-b text-slate-600 font-bold">
                   <th className="p-2.5 w-44">พนักงาน (Employee)</th>
                   <th className="p-2.5 w-32">แผนก</th>
-                  {daysOfWeek.map((day) => (
-                    <th key={day.key} className="p-2.5 text-center">{day.label}</th>
+                  {activeWeek?.days.map((day) => (
+                    <th key={day.dateStr} className="p-2.5 text-center">
+                      <div className="font-bold text-slate-700">{day.dayName}</div>
+                      <div className="text-[9px] font-mono text-slate-400 font-semibold">{day.dateStr.split('-').reverse().slice(0, 2).join('/')}</div>
+                    </th>
                   ))}
-                  <th className="p-2.5 text-center w-36">กำหนดด่วน Mon-Fri</th>
+                  <th className="p-2.5 text-center w-36">กำหนดด่วน ({weekendRestOption === 'SAT_SUN' ? 'Mon-Fri' : 'Mon-Sat'})</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -370,28 +543,19 @@ export const EmployeesPanel: React.FC<EmployeesPanelProps> = ({
                       <td className="p-2.5">
                         <span className="text-slate-500 font-semibold">{emp.department}</span>
                       </td>
-                      {daysOfWeek.map((day) => {
-                        const val = getDayShift(emp, day.key);
+                      {activeWeek?.days.map((day) => {
+                        const val = getDayShiftByDate(emp, day.dateStr, day.key);
                         return (
-                          <td key={day.key} className="p-1.5 text-center">
+                          <td key={day.dateStr} className="p-1.5 text-center">
                             <select
                               disabled={!isAdminOrLeader}
                               value={val}
                               onChange={(e) => {
-                                const currentWeekly = emp.weeklyShifts || {
-                                  mon: emp.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY',
-                                  tue: emp.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY',
-                                  wed: emp.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY',
-                                  thu: emp.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY',
-                                  fri: emp.shiftWork.includes('NIGHT') ? 'NIGHT' : 'DAY',
-                                  sat: 'OFF',
-                                  sun: 'OFF',
-                                };
                                 onUpdateEmployee({
                                   ...emp,
                                   weeklyShifts: {
-                                    ...currentWeekly,
-                                    [day.key]: e.target.value,
+                                    ...(emp.weeklyShifts || {}),
+                                    [day.dateStr]: e.target.value,
                                   },
                                 });
                               }}
@@ -416,14 +580,14 @@ export const EmployeesPanel: React.FC<EmployeesPanelProps> = ({
                             <button
                               onClick={() => handleQuickSetShift(emp, 'DAY')}
                               className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[9px]"
-                              title="ตั้งจันทร์-ศุกร์ เป็นกะ DAY, เสาร์-อาทิตย์ เป็น OFF"
+                              title={`ตั้งค่าวันทำงานปกติเป็น DAY และวันหยุดเป็น OFF`}
                             >
                               DAY
                             </button>
                             <button
                               onClick={() => handleQuickSetShift(emp, 'NIGHT')}
                               className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[9px]"
-                              title="ตั้งจันทร์-ศุกร์ เป็นกะ NIGHT, เสาร์-อาทิตย์ เป็น OFF"
+                              title={`ตั้งค่าวันทำงานปกติเป็น NIGHT และวันหยุดเป็น OFF`}
                             >
                               NIGHT
                             </button>
