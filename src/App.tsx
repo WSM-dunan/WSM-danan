@@ -82,7 +82,41 @@ export default function App() {
 
   const [attendanceLogs, setAttendanceLogs] = useState<Attendance[]>(() => {
     const saved = localStorage.getItem('wms_attendance');
-    return saved ? JSON.parse(saved) : [];
+    const parsed: Attendance[] = saved ? JSON.parse(saved) : [];
+    
+    // Self-healing merge algorithm to consolidate records for the same employee on the same date
+    const merged: { [key: string]: Attendance } = {};
+    for (const log of parsed) {
+      if (!log || !log.employeeId || !log.date) continue;
+      const key = `${log.employeeId}_${log.date}`;
+      if (!merged[key]) {
+        merged[key] = { ...log };
+      } else {
+        const existing = merged[key];
+        // Merge check-in/out times safely
+        existing.checkIn = existing.checkIn || log.checkIn;
+        existing.checkOut = existing.checkOut || log.checkOut;
+        existing.reason = existing.reason || log.reason;
+        
+        // Retain specific request states
+        if (log.status === 'FORGOT_REQUEST_IN' || log.status === 'FORGOT_REQUEST_OUT' || log.status === 'PENDING_LEAVE') {
+          existing.status = log.status;
+          existing.requestedTime = log.requestedTime || existing.requestedTime;
+        } else if (log.status === 'LEAVE_APPROVED' || existing.status === 'LEAVE_APPROVED') {
+          existing.status = 'LEAVE_APPROVED';
+        } else if (existing.status === 'PRESENT' || log.status === 'PRESENT') {
+          existing.status = 'PRESENT';
+        }
+        
+        // Recalculate working hours if check-in and check-out are both present
+        if (existing.checkIn && existing.checkOut) {
+          const { workHours, otHours } = calculateAttendanceHours(existing.checkIn, existing.checkOut);
+          existing.workHours = workHours;
+          existing.otHours = otHours;
+        }
+      }
+    }
+    return Object.values(merged);
   });
 
   const [adjustRequests, setAdjustRequests] = useState<AdjustRequest[]>(() => {
@@ -215,19 +249,31 @@ export default function App() {
   // Handle Check-In Attendance action (including recalc work & ot hours)
   const handleCheckIn = (empId: string, empName: string, time: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
-    const newRecord: Attendance = {
-      id: `ATT-${Math.floor(Math.random() * 1000000)}`,
-      employeeId: empId,
-      employeeName: empName,
-      date: todayStr,
-      checkIn: time,
-      workHours: 0,
-      otHours: 0,
-      shift: loggedInUser?.shiftWork || 'DAY (08:30-17:30)',
-      status: 'PRESENT',
-    };
-
-    setAttendanceLogs([newRecord, ...attendanceLogs]);
+    setAttendanceLogs((prev) => {
+      const idx = prev.findIndex((l) => l.employeeId === empId && l.date === todayStr);
+      if (idx > -1) {
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          checkIn: time,
+          status: 'PRESENT',
+        };
+        return updated;
+      } else {
+        const newRecord: Attendance = {
+          id: `ATT-${Math.floor(Math.random() * 1000000)}`,
+          employeeId: empId,
+          employeeName: empName,
+          date: todayStr,
+          checkIn: time,
+          workHours: 0,
+          otHours: 0,
+          shift: loggedInUser?.shiftWork || 'DAY (08:30-17:30)',
+          status: 'PRESENT',
+        };
+        return [newRecord, ...prev];
+      }
+    });
   };
 
   const handleCheckOut = (empId: string, empName: string, time: string) => {
@@ -641,6 +687,14 @@ export default function App() {
                       alert('สร้าง Location สำเร็จจำนวน 60 ลำดับ!');
                     }
                   }}
+                  locations={locations}
+                  setLocations={setLocations}
+                  transactions={transactions}
+                  adjustRequests={adjustRequests}
+                  onSubmitAdjustmentRequest={(req) => {
+                    setAdjustRequests((prev) => [req, ...prev]);
+                  }}
+                  currentUser={loggedInUser}
                 />
               )}
 
@@ -650,8 +704,38 @@ export default function App() {
                   attendanceLogs={attendanceLogs}
                   onCheckIn={handleCheckIn}
                   onCheckOut={handleCheckOut}
-                  onSubmitForgotPunch={(req) => setAttendanceLogs([req, ...attendanceLogs])}
-                  onSubmitLeaveRequest={(req) => setAttendanceLogs([req, ...attendanceLogs])}
+                  onSubmitForgotPunch={(req) => {
+                    setAttendanceLogs((prev) => {
+                      const idx = prev.findIndex((l) => l.employeeId === req.employeeId && l.date === req.date);
+                      if (idx > -1) {
+                        const updated = [...prev];
+                        updated[idx] = {
+                          ...updated[idx],
+                          status: req.status,
+                          requestedTime: req.requestedTime,
+                          reason: req.reason,
+                        };
+                        return updated;
+                      }
+                      return [req, ...prev];
+                    });
+                  }}
+                  onSubmitLeaveRequest={(req) => {
+                    setAttendanceLogs((prev) => {
+                      const idx = prev.findIndex((l) => l.employeeId === req.employeeId && l.date === req.date);
+                      if (idx > -1) {
+                        const updated = [...prev];
+                        updated[idx] = {
+                          ...updated[idx],
+                          status: req.status,
+                          leaveType: req.leaveType,
+                          reason: req.reason,
+                        };
+                        return updated;
+                      }
+                      return [req, ...prev];
+                    });
+                  }}
                 />
               )}
 

@@ -78,6 +78,7 @@ export interface AdjustRequest {
   requester: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   timestamp: string;
+  location?: string;
 }
 
 export const INITIAL_EMPLOYEES: Employee[] = [

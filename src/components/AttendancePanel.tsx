@@ -126,23 +126,23 @@ export const AttendancePanel: React.FC<AttendancePanelProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={handleClockInAction}
-              disabled={!!todayRecord?.checkIn || todayRecord?.status === 'LEAVE_APPROVED'}
+              disabled={!!todayRecord?.checkIn || todayRecord?.status === 'FORGOT_REQUEST_IN' || todayRecord?.status === 'LEAVE_APPROVED' || todayRecord?.status === 'PENDING_LEAVE'}
               className="flex flex-col items-center justify-center py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold rounded shadow transition-all active:scale-95"
             >
               <span className="text-base font-black">เข้างาน (CHECK IN)</span>
               <span className="text-[10px] opacity-80 mt-1">
-                {todayRecord?.checkIn ? `ลงเวลาแล้ว: ${todayRecord.checkIn} น.` : 'ตอกเข้างานเช้า'}
+                {todayRecord?.checkIn ? `ลงเวลาแล้ว: ${todayRecord.checkIn} น.` : todayRecord?.status === 'FORGOT_REQUEST_IN' ? 'รอยืนยันสิทธิ์ลืมตอกบัตร' : 'ตอกเข้างานเช้า'}
               </span>
             </button>
 
             <button
               onClick={handleClockOutAction}
-              disabled={!todayRecord?.checkIn || !!todayRecord?.checkOut}
+              disabled={!todayRecord?.checkIn || !!todayRecord?.checkOut || todayRecord?.status === 'FORGOT_REQUEST_OUT'}
               className="flex flex-col items-center justify-center py-4 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold rounded shadow transition-all active:scale-95"
             >
               <span className="text-base font-black">เลิกงาน (CHECK OUT)</span>
               <span className="text-[10px] opacity-80 mt-1">
-                {todayRecord?.checkOut ? `ลงเวลาแล้ว: ${todayRecord.checkOut} น.` : 'ตอกเลิกงานเย็น'}
+                {todayRecord?.checkOut ? `ลงเวลาแล้ว: ${todayRecord.checkOut} น.` : todayRecord?.status === 'FORGOT_REQUEST_OUT' ? 'รอยืนยันสิทธิ์ลืมตอกบัตร' : 'ตอกเลิกงานเย็น'}
               </span>
             </button>
           </div>
