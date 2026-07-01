@@ -1,0 +1,6 @@
+{
+  "name": "WMS PRO (Store & Planning)",
+  "description": "ระบบจัดการคลังสินค้าและการวางแผนงาน (WMS & Production Planning System) รองรับการสแกน QR, สต๊อก, พนักงาน, กะการทำงาน และตอกบัตรเช็คอิน",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
